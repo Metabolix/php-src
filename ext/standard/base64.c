@@ -143,11 +143,6 @@ PHPAPI zend_string *php_base64_decode_ex(const unsigned char *str, size_t length
 
 	/* run through the whole string, converting as we go */
 	for (i = 0; i < length; ++i) {
-		/* stop on null byte  */
-		/* FIXME: this is wrong behaviour, remove this! */
-		if (str[i] == 0) {
-			break;
-		}
 		/* count padding characters */
 		if (str[i] == base64_pad) {
 			/* fail if the padding character is second in a group (like A===) */

@@ -135,75 +135,99 @@ PHPAPI zend_string *php_base64_decode(const unsigned char *str, size_t length) /
 
 PHPAPI zend_string *php_base64_decode_ex(const unsigned char *str, size_t length, zend_bool strict) /* {{{ */
 {
-	const unsigned char *current = str;
-	int ch, i = 0, j = 0, k;
-	/* this sucks for threaded environments */
+	int val_b64, padding = 0;
+	size_t i, n_in = 0, n_out = 0;
 	zend_string *result;
 
-	result = zend_string_alloc(length, 0);
+	result = zend_string_alloc((length + 3) / 4 * 3, 0);
 
 	/* run through the whole string, converting as we go */
-	while ((ch = *current++) != '\0' && length-- > 0) {
-		if (ch == base64_pad) {
-			if (*current != '=' && ((i % 4) == 1 || (strict && length > 0))) {
-				if ((i % 4) != 1) {
-					while (isspace(*(++current))) {
-						continue;
-					}
-					if (*current == '\0') {
-						continue;
-					}
+	for (i = 0; i < length; ++i) {
+		/* stop on null byte  */
+		/* FIXME: this is wrong behaviour, remove this! */
+		if (str[i] == 0) {
+			break;
+		}
+		/* count padding characters */
+		if (str[i] == base64_pad) {
+			/* fail if the padding character is second in a group (like A===) */
+			/* FIXME: why we still allow invalid padding in other places in the middle of the string? */
+			if (n_in % 4 == 1) {
+				goto fail;
+			}
+			/* in strict mode, when the padding ends, skip one (any) character, skip whitespaces,
+			 * and return FALSE if the next character is not NUL, otherwise return the current decoded string */
+			/* FIXME: this is wrong behaviour and may read past-the-end, remove this! */
+			if (strict && i != length - 1 && str[i+1] != base64_pad) {
+				i += 2;
+				while (isspace(str[i])) {
+					i += 1;
 				}
-				zend_string_free(result);
-				return NULL;
+				if (str[i] == 0) {
+					break;
+				}
+				goto fail;
+			}
+			/* strict: fail if there is a space between padding characters */
+			/* FIXME: this is wrong behaviour, remove this! */
+			if (strict && padding && str[i-1] != base64_pad) {
+				goto fail;
+			}
+			/* strict: maximum padding is two characters */
+			/* FIXME: enable this!
+			if (strict && padding == 2) {
+				goto fail;
+			}
+			*/
+			++padding;
+			continue;
+		}
+		val_b64 = base64_reverse_table[str[i]];
+		/* spaces and unknown characters */
+		if (val_b64 < 0) {
+			/* strict: fail on unknown characters */
+			if (strict && val_b64 == -2) {
+				goto fail;
 			}
 			continue;
 		}
-
-		ch = base64_reverse_table[ch];
-		if ((!strict && ch < 0) || ch == -1) { /* a space or some other separator character, we simply skip over */
-			continue;
-		} else if (ch == -2) {
-			zend_string_free(result);
-			return NULL;
+		/* strict: fail if data follows padding */
+		if (strict && padding) {
+			goto fail;
 		}
+		/* forget invalid padding */
+		padding = 0;
 
-		switch(i % 4) {
+		switch (n_in++ % 4) {
 		case 0:
-			ZSTR_VAL(result)[j] = ch << 2;
+			ZSTR_VAL(result)[n_out] = val_b64 << 2;
 			break;
 		case 1:
-			ZSTR_VAL(result)[j++] |= ch >> 4;
-			ZSTR_VAL(result)[j] = (ch & 0x0f) << 4;
+			ZSTR_VAL(result)[n_out++] |= val_b64 >> 4;
+			ZSTR_VAL(result)[n_out] = (val_b64 & 0x0f) << 4;
 			break;
 		case 2:
-			ZSTR_VAL(result)[j++] |= ch >>2;
-			ZSTR_VAL(result)[j] = (ch & 0x03) << 6;
+			ZSTR_VAL(result)[n_out++] |= val_b64 >> 2;
+			ZSTR_VAL(result)[n_out] = (val_b64 & 0x03) << 6;
 			break;
 		case 3:
-			ZSTR_VAL(result)[j++] |= ch;
+			ZSTR_VAL(result)[n_out++] |= val_b64;
 			break;
 		}
-		i++;
 	}
+	/* FIXME: fail if the last 24-bit sequence had only 6 bits set (like A===)
+	if (n_in % 4 == 1) {
+		goto fail;
+	}
+	*/
 
-	k = j;
-	/* mop things up if we ended on a boundary */
-	if (ch == base64_pad) {
-		switch(i % 4) {
-		case 1:
-			zend_string_free(result);
-			return NULL;
-		case 2:
-			k++;
-		case 3:
-			ZSTR_VAL(result)[k] = 0;
-		}
-	}
-	ZSTR_LEN(result) = j;
+	ZSTR_LEN(result) = n_out;
 	ZSTR_VAL(result)[ZSTR_LEN(result)] = '\0';
 
 	return result;
+fail:
+	zend_string_free(result);
+	return NULL;
 }
 /* }}} */
 

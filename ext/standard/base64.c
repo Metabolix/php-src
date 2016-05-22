@@ -150,11 +150,6 @@ PHPAPI zend_string *php_base64_decode_ex(const unsigned char *str, size_t length
 			if (n_in % 4 == 1) {
 				goto fail;
 			}
-			/* strict: fail if there is a space between padding characters */
-			/* FIXME: this is wrong behaviour, remove this! */
-			if (strict && padding && str[i-1] != base64_pad) {
-				goto fail;
-			}
 			/* strict: maximum padding is two characters */
 			/* FIXME: enable this!
 			if (strict && padding == 2) {

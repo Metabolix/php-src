@@ -155,19 +155,6 @@ PHPAPI zend_string *php_base64_decode_ex(const unsigned char *str, size_t length
 			if (n_in % 4 == 1) {
 				goto fail;
 			}
-			/* in strict mode, when the padding ends, skip one (any) character, skip whitespaces,
-			 * and return FALSE if the next character is not NUL, otherwise return the current decoded string */
-			/* FIXME: this is wrong behaviour and may read past-the-end, remove this! */
-			if (strict && i != length - 1 && str[i+1] != base64_pad) {
-				i += 2;
-				while (isspace(str[i])) {
-					i += 1;
-				}
-				if (str[i] == 0) {
-					break;
-				}
-				goto fail;
-			}
 			/* strict: fail if there is a space between padding characters */
 			/* FIXME: this is wrong behaviour, remove this! */
 			if (strict && padding && str[i-1] != base64_pad) {
